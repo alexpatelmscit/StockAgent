@@ -1,81 +1,62 @@
 import streamlit as st
-from agent import StockAgent
+from agent import StockAgent, SECTOR_MAP
 import datetime
+import os
+import json
 
-st.set_page_config(page_title="StockAgent - AI Picker", layout="wide")
+# App Configuration
+st.set_page_config(page_title="StockAgent AI", layout="wide")
 
-# Sidebar for Inputs
-st.sidebar.header("⚙️ Investment Configuration")
+st.title("📈 StockAgent: AI Stock Picker")
+st.write(f"Logged in as: **Dr. Alex V. Patel** | Date: {datetime.date.today()}")
 
-base_amount = st.sidebar.number_input("Investment Amount (₹)", min_value=0, value=10000, step=500)
-sectors_list = list(StockAgent({}).SECTOR_MAP.keys())
-selected_sectors = st.sidebar.multiselect("Select Sectors (Leave empty for Top 10)", sectors_list)
+# Sidebar Inputs
+st.sidebar.header("User Configurations")
+base_amount = st.sidebar.number_input("Investment Amount (₹)", min_value=0, value=10000)
+selected_sectors = st.sidebar.multiselect("Select Sectors (Optional)", list(SECTOR_MAP.keys()))
+frequency = st.sidebar.selectbox("Frequency", ["Monthly", "Quarterly", "Half-Yearly", "Yearly"])
 
-frequency = st.sidebar.selectbox("Investment Frequency", ["Monthly", "Quarterly", "Half-Yearly", "Yearly"])
+# Initialization
+config = {
+    "base_amount": base_amount,
+    "sectors": selected_sectors,
+    "frequency": frequency.lower()
+}
+agent = StockAgent(config)
 
-# App Layout
-st.title("📈 StockAgent: Intelligent Stock Picker")
-st.write(f"Today is **{datetime.date.today()}**")
-
+# Dashboard Layout
 col1, col2 = st.columns(2)
 
 with col1:
-    if st.button("🚀 Run Investment Agent"):
-        config = {
-            "base_amount": base_amount,
-            "sectors": selected_sectors,
-            "frequency": frequency.lower()
-        }
-        agent = StockAgent(config)
-        
-        with st.spinner("Agent is perceiving market data..."):
-            # We wrap the run output to capture it for Streamlit
-            st.subheader("🤖 Agent Action Log")
+    st.subheader("🚀 Run Agent")
+    if st.button("Execute Investment Cycle"):
+        with st.spinner("Fetching market data..."):
             prices = agent.perceive()
             if not prices:
-                st.error("Could not fetch prices. Check connection.")
+                st.error("No data found. Please check internet connection.")
             else:
                 suggestion = agent.decide(prices)
-                # Display market sentiment
-                if sum(prices.values())/len(prices) > 500:
-                    st.warning("📈 Market prices are high — consider increasing investment next cycle.")
-                else:
-                    st.info("📉 Market prices are moderate — sticking to base amount.")
+                results = agent.act(prices, suggestion)
                 
-                # Execute actions
-                allocation = suggestion["amount"] / len(prices)
-                results = []
-                for stock, price in prices.items():
-                    shares = allocation / price
-                    results.append({
-                        "Stock": stock,
-                        "Price": f"₹{price:.2f}",
-                        "Shares Bought": f"{shares:.2f}",
-                        "Allocation": f"₹{allocation:.2f}"
-                    })
-                    agent.log_transaction(stock, allocation, price, shares)
-                
+                st.success("Investment Cycle Complete!")
                 st.table(results)
-                st.success(f"Investment of ₹{suggestion['amount']} complete!")
 
 with col2:
-    if st.button("📊 View Portfolio Summary"):
-        agent = StockAgent({"base_amount": 0, "sectors": []})
-        st.subheader("Your Portfolio Statistics")
-        
+    st.subheader("📊 Portfolio Summary")
+    if st.button("Show Current Holdings"):
         if not agent.portfolio:
-            st.info("No portfolio found. Run the agent first!")
+            st.info("Portfolio is currently empty.")
         else:
-            summary_data = []
-            total_val = 0
-            for stock, shares in agent.portfolio.items():
-                try:
-                    price = agent.perceive().get(stock) or 0
-                    value = shares * price
-                    total_val += value
-                    summary_data.append({"Stock": stock, "Shares": round(shares, 2), "Current Value": f"₹{value:.2f}"})
-                except:
-                    summary_data.append({"Stock": stock, "Shares": round(shares, 2), "Current Value": "Fetch Error"})
+            total_invested = 0
+            if os.path.exists("history.json"):
+                with open("history.json", "r") as f:
+                    history = json.load(f)
+                    total_invested = sum(item['amount'] for item in history)
             
-            st.dataframe(summary_data, use_container_width=True)
-            st.metric("Total Portfolio Value", f"₹{total_val:.2f}")
+            st.metric("Total Invested", f"₹{total_invested:,.2f}")
+            st.write("**Current Holdings (Shares):**")
+            st.json(agent.portfolio)
+
+# Footer
+st.divider()
+st.caption("Note: Files (portfolio.json) are stored temporarily on Streamlit Cloud and may reset on app reboot.")
