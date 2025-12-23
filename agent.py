@@ -2,30 +2,56 @@ import datetime
 import yfinance as yf
 import json
 import os
-
-SECTOR_MAP = {
-    "banking": ["HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "AXISBANK.NS"],
-    "metals": ["TATASTEEL.NS", "HINDALCO.NS", "VEDL.NS", "JSWSTEEL.NS"],
-    "automobiles": ["MARUTI.NS", "TATAMOTORS.NS", "M&M.NS", "EICHERMOT.NS"],
-    "technology": ["INFY.NS", "TCS.NS", "WIPRO.NS", "HCLTECH.NS"],
-    "pharma": ["SUNPHARMA.NS", "CIPLA.NS", "DRREDDY.NS", "DIVISLAB.NS"],
-    "industrials": ["LT.NS", "BEL.NS", "ABB.NS", "SIEMENS.NS"],
-    "consumer discretionary": ["DMART.NS", "TRENT.NS", "PAGEIND.NS", "JUBLFOOD.NS"]
-}
+import pandas as pd
+import requests
 
 class StockAgent:
     def __init__(self, config, portfolio_file="portfolio.json", history_file="history.json"):
         self.base_amount = config.get("base_amount", 0)
-        self.sectors = config.get("sectors", [])
+        self.sectors_input = config.get("sectors", [])
         self.frequency = config.get("frequency", "monthly")
         self.portfolio_file = portfolio_file
         self.history_file = history_file
+        
+        # 1. Dynamically discover sectors
+        self.SECTOR_MAP = self.discover_sectors()
         self.portfolio = self.load_portfolio()
 
-        if not self.sectors:
+        if not self.sectors_input:
             self.sectors, self.stocks = self.pick_daily_top_buys()
         else:
-            self.stocks = self.get_stocks_from_sectors(self.sectors)
+            self.stocks = self.get_stocks_from_sectors(self.sectors_input)
+
+    def discover_sectors(self):
+        """Fetches the Nifty 50 list and groups tickers by Industry."""
+        try:
+            # Using a reliable public mirror for Nifty 50 data
+            url = "https://raw.githubusercontent.com/anirudha-shinde/Indian-Stock-Market-Data/main/Nifty_50_Stocks.csv"
+            df = pd.read_csv(url)
+            
+            # Clean column names (handles spaces/case)
+            df.columns = [c.strip().lower() for c in df.columns]
+            
+            # Find the right columns (Symbol and Industry/Sector)
+            symbol_col = 'symbol' if 'symbol' in df.columns else df.columns[0]
+            sector_col = 'industry' if 'industry' in df.columns else 'sector'
+            
+            # Grouping
+            dynamic_map = df.groupby(sector_col)[symbol_col].apply(list).to_dict()
+            
+            # Add .NS suffix for Yahoo Finance
+            formatted_map = {}
+            for sector, tickers in dynamic_map.items():
+                formatted_map[sector.lower()] = [f"{t}.NS" for t in tickers]
+            
+            return formatted_map
+        except Exception as e:
+            # Fallback static map if network fails
+            return {
+                "banking": ["HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS"],
+                "it": ["TCS.NS", "INFY.NS", "WIPRO.NS"],
+                "oil & gas": ["RELIANCE.NS", "ONGC.NS"]
+            }
 
     def load_portfolio(self):
         if os.path.exists(self.portfolio_file):
@@ -45,7 +71,7 @@ class StockAgent:
             "stock": stock,
             "amount": round(allocation, 2),
             "price": round(price, 2),
-            "shares": round(shares, 2)
+            "shares": round(shares, 4)
         }
         history = []
         if os.path.exists(self.history_file):
@@ -58,34 +84,35 @@ class StockAgent:
 
     def get_stocks_from_sectors(self, sectors):
         tickers = []
-        for sector in sectors:
-            sector = sector.lower().strip()
-            if sector in SECTOR_MAP:
-                tickers.extend(SECTOR_MAP[sector])
+        for s in sectors:
+            tickers.extend(self.SECTOR_MAP.get(s.lower(), []))
         return tickers
 
     def fetch_top_buys(self):
-        return ["NMDC.NS", "GLENMARK.NS", "BHEL.NS", "HDFCBANK.NS", "ICICIBANK.NS",
-                "TATASTEEL.NS", "JSWSTEEL.NS", "INFY.NS", "SUNPHARMA.NS", "LT.NS"]
+        """Top 10 High Volume Stocks for today"""
+        return ["RELIANCE.NS", "HDFCBANK.NS", "ICICIBANK.NS", "TCS.NS", "INFY.NS", 
+                "BHARTIARTL.NS", "SBIN.NS", "ITC.NS", "LICI.NS", "AXISBANK.NS"]
 
     def pick_daily_top_buys(self):
-        return ["daily_top"], self.fetch_top_buys()
+        return ["Daily Top 10"], self.fetch_top_buys()
 
     def perceive(self):
         prices = {}
         for ticker in self.stocks:
-            stock = yf.Ticker(ticker)
-            hist = stock.history(period="5d")
-            if not hist.empty:
-                prices[ticker] = hist["Close"].iloc[-1]
+            try:
+                stock = yf.Ticker(ticker)
+                hist = stock.history(period="1d")
+                if not hist.empty:
+                    prices[ticker] = hist["Close"].iloc[-1]
+            except: continue
         return prices
 
     def decide(self, prices):
-        return {"amount": self.base_amount, "sectors": self.sectors}
+        return {"amount": self.base_amount, "sectors": self.sectors_input}
 
     def act(self, prices, suggestion):
-        # This returns a list of results for the UI to display
         report = []
+        if not prices: return report
         allocation = suggestion["amount"] / len(prices)
         for stock, price in prices.items():
             shares = allocation / price
