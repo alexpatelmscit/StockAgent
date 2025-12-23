@@ -12,19 +12,20 @@ class StockAgent:
         self.portfolio_file = portfolio_file
         self.history_file = history_file
         
-        # 13 Nifty Sectors
         self.SECTOR_MAP = self.discover_sectors()
+        # Inverse map to find sector by ticker
+        self.TICKER_TO_SECTOR = {ticker: sector for sector, tickers in self.SECTOR_MAP.items() for ticker in tickers}
+        
         self.portfolio = self.load_portfolio()
         self.stocks = self.get_stocks_from_sectors(self.sectors_input) if self.sectors_input else self.fetch_top_buys()
 
     def discover_sectors(self):
-        """Full 13-sector Nifty list for 2025"""
         return {
             "financial services": ["HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "AXISBANK.NS", "KOTAKBANK.NS"],
             "it": ["TCS.NS", "INFY.NS", "HCLTECH.NS", "WIPRO.NS", "TECHM.NS"],
-            "oil, gas & consumable fuels": ["RELIANCE.NS", "ONGC.NS", "BPCL.NS"],
+            "oil & gas": ["RELIANCE.NS", "ONGC.NS", "BPCL.NS"],
             "fmcg": ["ITC.NS", "HINDUNILVR.NS", "NESTLEIND.NS", "BRITANNIA.NS"],
-            "automobile & auto components": ["TATAMOTORS.NS", "M&M.NS", "MARUTI.NS", "EICHERMOT.NS", "BAJAJ-AUTO.NS"],
+            "automobile": ["TATAMOTORS.NS", "M&M.NS", "MARUTI.NS", "EICHERMOT.NS", "BAJAJ-AUTO.NS"],
             "healthcare": ["SUNPHARMA.NS", "CIPLA.NS", "DRREDDY.NS", "APOLLOHOSP.NS"],
             "metals & mining": ["TATASTEEL.NS", "JSWSTEEL.NS", "HINDALCO.NS", "COALINDIA.NS"],
             "power": ["NTPC.NS", "POWERGRID.NS"],
@@ -36,7 +37,6 @@ class StockAgent:
         }
 
     def fetch_top_buys(self):
-        """Top 10 Nifty Blue-chips"""
         return ["RELIANCE.NS", "HDFCBANK.NS", "BHARTIARTL.NS", "TCS.NS", "ICICIBANK.NS", 
                 "SBIN.NS", "INFY.NS", "BAJFINANCE.NS", "LT.NS", "HINDUNILVR.NS"]
 
@@ -52,7 +52,15 @@ class StockAgent:
             json.dump(self.portfolio, f, indent=4)
 
     def log_transaction(self, stock, allocation, price, shares):
-        entry = {"date": str(datetime.date.today()), "stock": stock, "amount": round(allocation, 2), "price": round(price, 2), "shares": round(shares, 4)}
+        sector = self.TICKER_TO_SECTOR.get(stock, "Other")
+        entry = {
+            "date": str(datetime.date.today()), 
+            "stock": stock, 
+            "sector": sector,
+            "amount": round(allocation, 2), 
+            "price": round(price, 2), 
+            "shares": round(shares, 4)
+        }
         history = []
         if os.path.exists(self.history_file):
             with open(self.history_file, "r") as f:
