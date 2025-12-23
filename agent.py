@@ -6,51 +6,39 @@ import pandas as pd
 
 class StockAgent:
     def __init__(self, config, portfolio_file="portfolio.json", history_file="history.json"):
-        self.base_amount = config.get("base_amount", 0)
+        self.base_amount = config.get("base_amount", 10000)
         self.sectors_input = config.get("sectors", [])
         self.frequency = config.get("frequency", "Monthly")
         self.portfolio_file = portfolio_file
         self.history_file = history_file
         
-        # Comprehensive 13-sector fallback for 2025
+        # 13 Nifty Sectors
         self.SECTOR_MAP = self.discover_sectors()
         self.portfolio = self.load_portfolio()
-
-        # Always initialize stocks list
         self.stocks = self.get_stocks_from_sectors(self.sectors_input) if self.sectors_input else self.fetch_top_buys()
 
     def discover_sectors(self):
-        """Fetches Nifty 50 list with a detailed 13-sector fallback."""
-        try:
-            url = "https://raw.githubusercontent.com/anirudha-shinde/Indian-Stock-Market-Data/main/Nifty_50_Stocks.csv"
-            df = pd.read_csv(url)
-            df.columns = [c.strip().lower() for c in df.columns]
-            symbol_col = 'symbol' if 'symbol' in df.columns else df.columns[0]
-            sector_col = 'industry' if 'industry' in df.columns else 'sector'
-            dynamic_map = df.groupby(sector_col)[symbol_col].apply(list).to_dict()
-            return {k.lower(): [f"{t}.NS" for t in v] for k, v in dynamic_map.items()}
-        except:
-            # Full 2025 Sector Fallback
-            return {
-                "financial services": ["HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "AXISBANK.NS", "KOTAKBANK.NS"],
-                "it": ["TCS.NS", "INFY.NS", "HCLTECH.NS", "WIPRO.NS", "TECHM.NS"],
-                "oil, gas & consumable fuels": ["RELIANCE.NS", "ONGC.NS", "BPCL.NS"],
-                "fmcg": ["ITC.NS", "HINDUNILVR.NS", "NESTLEIND.NS", "BRITANNIA.NS", "TATACONSUM.NS"],
-                "automobile & auto components": ["TATAMOTORS.NS", "M&M.NS", "MARUTI.NS", "EICHERMOT.NS", "BAJAJ-AUTO.NS"],
-                "healthcare": ["SUNPHARMA.NS", "CIPLA.NS", "DRREDDY.NS", "APOLLOHOSP.NS", "DIVISLAB.NS"],
-                "construction": ["LT.NS"],
-                "metals & mining": ["TATASTEEL.NS", "JSWSTEEL.NS", "HINDALCO.NS", "COALINDIA.NS"],
-                "consumer durables": ["TITAN.NS", "ASIANPAINT.NS"],
-                "telecommunication": ["BHARTIARTL.NS"],
-                "power": ["NTPC.NS", "POWERGRID.NS"],
-                "cement & cement products": ["ULTRACEMCO.NS", "GRASIM.NS"],
-                "services": ["ADANIPORTS.NS"]
-            }
+        """Full 13-sector Nifty list for 2025"""
+        return {
+            "financial services": ["HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "AXISBANK.NS", "KOTAKBANK.NS"],
+            "it": ["TCS.NS", "INFY.NS", "HCLTECH.NS", "WIPRO.NS", "TECHM.NS"],
+            "oil, gas & consumable fuels": ["RELIANCE.NS", "ONGC.NS", "BPCL.NS"],
+            "fmcg": ["ITC.NS", "HINDUNILVR.NS", "NESTLEIND.NS", "BRITANNIA.NS"],
+            "automobile & auto components": ["TATAMOTORS.NS", "M&M.NS", "MARUTI.NS", "EICHERMOT.NS", "BAJAJ-AUTO.NS"],
+            "healthcare": ["SUNPHARMA.NS", "CIPLA.NS", "DRREDDY.NS", "APOLLOHOSP.NS"],
+            "metals & mining": ["TATASTEEL.NS", "JSWSTEEL.NS", "HINDALCO.NS", "COALINDIA.NS"],
+            "power": ["NTPC.NS", "POWERGRID.NS"],
+            "construction": ["LT.NS"],
+            "consumer durables": ["TITAN.NS", "ASIANPAINT.NS"],
+            "telecommunication": ["BHARTIARTL.NS"],
+            "cement": ["ULTRACEMCO.NS", "GRASIM.NS"],
+            "services": ["ADANIPORTS.NS"]
+        }
 
     def fetch_top_buys(self):
-        """Top 10 High-Impact Nifty Stocks"""
+        """Top 10 Nifty Blue-chips"""
         return ["RELIANCE.NS", "HDFCBANK.NS", "BHARTIARTL.NS", "TCS.NS", "ICICIBANK.NS", 
-                "SBIN.NS", "INFY.NS", "BAJFINANCE.NS", "LT.NS", "LICI.NS"]
+                "SBIN.NS", "INFY.NS", "BAJFINANCE.NS", "LT.NS", "HINDUNILVR.NS"]
 
     def load_portfolio(self):
         if os.path.exists(self.portfolio_file):
@@ -86,8 +74,7 @@ class StockAgent:
             try:
                 stock = yf.Ticker(ticker)
                 hist = stock.history(period="1d")
-                if not hist.empty:
-                    prices[ticker] = hist["Close"].iloc[-1]
+                if not hist.empty: prices[ticker] = hist["Close"].iloc[-1]
             except: continue
         return prices
 
